@@ -74,7 +74,7 @@ class stackHourglassTrainer():
                 visImg.append(line)
 
             # if i == self.opt.visTrain:
-            #    self.visualize(visImg, epoch, 'train', trainLoader.dataset.postprocess, trainLoader.dataset.postprocessLine)
+            #     self.visualize(visImg, epoch, 'train', trainLoader.dataset.postprocess, trainLoader.dataset.postprocessLine)
 
         log = '\n * Finished training epoch # %d     Loss: %1.4f\n' % (epoch, avgLoss)
         self.logger['train'].write(log)

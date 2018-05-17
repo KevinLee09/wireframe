@@ -1,8 +1,9 @@
-import numpy as np
 import pdb
 
+import numpy as np
 
-DEBUG=False
+DEBUG = False
+
 
 def generate_anchors(grid_size, stride=8.):
     """
@@ -12,19 +13,19 @@ def generate_anchors(grid_size, stride=8.):
     grid_h, grid_w = grid_size
     yy, xx = np.meshgrid(stride * np.arange(grid_h), stride * np.arange(grid_w))
     anchors = np.stack((yy, xx), axis=2)
-    #print anchors.shape
 
-    anchors = anchors + stride/2.
+    anchors = anchors + stride / 2.
     if DEBUG:
         print(anchors)
         print(anchors.reshape((-1, 2)))
     return anchors
 
+
 def generate_bin_anchors(num_bin):
-    assert int(360./num_bin) * num_bin == 360
-    bin_width = 360./float(num_bin)
-    bin_anchors = [x * bin_width for x in range(int(360/bin_width))]
-    
+    assert int(360. / num_bin) * num_bin == 360
+    bin_width = 360. / float(num_bin)
+    bin_anchors = [x * bin_width for x in range(int(360 / bin_width))]
+
     if DEBUG:
         print(bin_anchors)
     return bin_anchors
@@ -41,6 +42,7 @@ def _whctrs(anchor):
     y_ctr = anchor[1] + 0.5 * (h - 1)
     return w, h, x_ctr, y_ctr
 
+
 def _mkanchors(ws, hs, x_ctr, y_ctr):
     """
     Given a vector of widths (ws) and heights (hs) around a center
@@ -49,11 +51,10 @@ def _mkanchors(ws, hs, x_ctr, y_ctr):
 
     ws = ws[:, np.newaxis]
     hs = hs[:, np.newaxis]
-    anchors = np.hstack((x_ctr - 0.5 * (ws - 1),
-                         y_ctr - 0.5 * (hs - 1),
-                         x_ctr + 0.5 * (ws - 1),
+    anchors = np.hstack((x_ctr - 0.5 * (ws - 1), y_ctr - 0.5 * (hs - 1), x_ctr + 0.5 * (ws - 1),
                          y_ctr + 0.5 * (hs - 1)))
     return anchors
+
 
 def _ratio_enum(anchor, ratios):
     """
@@ -68,6 +69,7 @@ def _ratio_enum(anchor, ratios):
     anchors = _mkanchors(ws, hs, x_ctr, y_ctr)
     return anchors
 
+
 def _scale_enum(anchor, scales):
     """
     Enumerate a set of anchors for each scale wrt an anchor.
@@ -79,8 +81,9 @@ def _scale_enum(anchor, scales):
     anchors = _mkanchors(ws, hs, x_ctr, y_ctr)
     return anchors
 
+
 if __name__ == '__main__':
-    generate_anchors((3,3), stride=2)
+    generate_anchors((3, 3), stride=2)
     generate_bin_anchors(12)
     exit()
     import time
@@ -88,5 +91,3 @@ if __name__ == '__main__':
     a = generate_anchors()
     print(time.time() - t)
     print(a)
-    #from IPython import embed; embed()
-

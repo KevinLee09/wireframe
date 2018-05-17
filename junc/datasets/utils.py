@@ -1,50 +1,45 @@
 import itertools
 import json
-import os
-import random
-import sys
-from os.path import isdir, isfile, join, basename
-
-from math import cos, pi, sin, sqrt, acos
-from tqdm import tqdm
 import multiprocessing
-
-import scipy.io as sio
-import numpy as np
-import cv2
-from cv2 import resize as resize_, imread
-
-from joblib import Parallel, delayed
-import progressbar as pb
-
+import os
 # python3
 import pickle
-
-# from .libs import *
-# safe dictionary copy
+import random
+import sys
 from copy import deepcopy as dc
+from math import acos, cos, pi, sin, sqrt
+from os.path import basename, isdir, isfile, join
+
+import numpy as np
+import progressbar as pb
+import scipy.io as sio
+from joblib import Parallel, delayed
+from tqdm import tqdm
+
+import cv2
+from cv2 import imread
+from cv2 import resize as resize_
+
 import ref
 
 random.seed(0)
 
 
+# transform annotation to array format
 def ann_to_array(H, d, max_len=1):
     # junction_order = H.get('junction_order', 'off_cell_center')
     region_size = H['region_size']
-    inp_h = inp_w = H['image_size']
+    inp_h = H['image_size']
     grid_h = grid_w = H['grid_size']
     assert region_size == inp_h // grid_h
 
     junctions = d['junction']
     theta = d['theta_bin']
-    num_junc = len(junctions)
 
     junction_residual = np.zeros((grid_h, grid_w, max_len, 2), dtype=np.float)
     junction_flags = np.zeros((grid_h, grid_w, max_len), dtype=np.int32)
-    theta_bin = np.zeros((grid_h, grid_w, max_len, H['num_bin']),
-                         dtype=np.int32)
-    theta_bin_residual = np.zeros((grid_h, grid_w, max_len, H['num_bin']),
-                                  dtype=np.float)
+    theta_bin = np.zeros((grid_h, grid_w, max_len, H['num_bin']), dtype=np.int32)
+    theta_bin_residual = np.zeros((grid_h, grid_w, max_len, H['num_bin']), dtype=np.float)
 
     focus_range = 0.5  # H['focus_size']
 
@@ -54,7 +49,6 @@ def ann_to_array(H, d, max_len=1):
             cell_center_w, cell_center_h = ccx * region_size, ccy * region_size
             unsorted_junctions = []
             for idx, (jx, jy) in enumerate(junctions):
-                #px, py = jx / float(region_size), jy /float(region_size)
                 if abs(jx - cell_center_w) <= focus_range * region_size and abs(
                         jy - cell_center_h) <= focus_range * region_size:
                     ox, oy = jx - cell_center_w, jy - cell_center_h
@@ -63,15 +57,12 @@ def ann_to_array(H, d, max_len=1):
             if len(unsorted_junctions) == 0:
                 continue
             unsorted_junctions = unsorted_junctions[:max_len]
-            #print (unsorted_junctions[0][:2])
-            sorted_junctions = sorted(unsorted_junctions,
-                                      key=lambda x: x[0]**2 + x[1]**2)
+            sorted_junctions = sorted(unsorted_junctions, key=lambda x: x[0]**2 + x[1]**2)
             num_keep = min(max_len, len(sorted_junctions))
 
             for idx_sorted in range(num_keep):
                 ox, oy, th = sorted_junctions[idx_sorted]
-                junction_residual[h, w, idx_sorted, :] = np.array(
-                    (ox, oy), dtype=np.float32)
+                junction_residual[h, w, idx_sorted, :] = np.array((ox, oy), dtype=np.float32)
 
                 order_th = len(th)
                 if H['num_classes'] > 2:
@@ -82,8 +73,7 @@ def ann_to_array(H, d, max_len=1):
                     bin_idx, bin_residual = tt
                     bin_idx = int(bin_idx)
                     theta_bin[h, w, idx_sorted, bin_idx] = 1
-                    theta_bin_residual[h, w, idx_sorted, bin_idx] = float(
-                        bin_residual)
+                    theta_bin_residual[h, w, idx_sorted, bin_idx] = float(bin_residual)
     output = {}
     output['junction'] = junction_residual
     output['junction_flags'] = junction_flags
@@ -93,20 +83,15 @@ def ann_to_array(H, d, max_len=1):
 
 
 # Calculate the bin index and residual of junction angles.
-
-
 def make_bin(bn, ths):
     bin_num = bn
     bin_width = 360. / float(bin_num)
-    bin_max_width = 4
-    centers = np.array([i * bin_width for i in range(bin_num)] + [360.],
-                       dtype=np.float32)
+    centers = np.array([i * bin_width for i in range(bin_num)] + [360.], dtype=np.float32)
 
     th_bin = [None for _ in ths]
     for cnt0, th in enumerate(ths):
         bin_t = [None for _ in th]
         for cnt, angle in enumerate(th):
-            #assert scale <= line_max_len, "scale should be smaller than max length of lines."
             idx = round(float(angle) / bin_width)
             idx = int(idx)
             idx1 = idx if idx != bin_num else 0
@@ -134,8 +119,6 @@ def lineangle(p1, p2):
 
 
 # Resize image and annotation to input size of network.
-
-
 def resize_and_transform(H, d, max_len=1):
     num_bin = H['num_bin']
 
@@ -168,8 +151,6 @@ def resize_and_transform(H, d, max_len=1):
 
 # when resizing image, the junction angles should be
 # calculated again.
-
-
 def resize_theta(ths, scale_param, with_conf=False):
     new_ths = [None for _ in ths]
 
@@ -251,24 +232,22 @@ def make_mirror(d, axis=1):
         d_mirror['img'] = I[:, ::-1, :]
         d_mirror['junction'] = [(w - x, y) for x, y in d['junction']]
         d_mirror['points'] = [(w - x, y) for x, y in d['points']]
-        d_mirror['theta'] = [[
-            180. - th if th < 180. else 540. - th for th in point_th
-        ] for point_th in d['theta']]
+        d_mirror['theta'] = [[180. - th if th < 180. else 540. - th for th in point_th]
+                             for point_th in d['theta']]
 
     elif axis == 1:
         d_mirror['img'] = I[::-1, :, :]
         d_mirror['junction'] = [(x, h - y) for x, y in d['junction']]
         d_mirror['points'] = [(x, h - y) for x, y in d['points']]
-        d_mirror['theta'] = [[360. - th for th in point_th]
-                             for point_th in d['theta']]
+        d_mirror['theta'] = [[360. - th for th in point_th] for point_th in d['theta']]
 
     return (d_mirror)
 
 
 # Transform the raw data and augment, store it.
 def save_ann(H, d, save_dir, max_len=1, split='train'):
-    grid_h = grid_w = H['grid_size']
-    image_h = image_w = H['image_size']
+    grid_h = H['grid_size']
+    image_h = H['image_size']
     num_bin = H['num_bin']
 
     I = d['img']
@@ -280,7 +259,7 @@ def save_ann(H, d, save_dir, max_len=1, split='train'):
 
     td = dc(d)
     td['img'] = I
-    td['theta'] = theta = [[x for x, _ in th] for th in d['theta']]
+    td['theta'] = [[x for x, _ in th] for th in d['theta']]
 
     annlist = []
     annlist += [td]
@@ -288,12 +267,10 @@ def save_ann(H, d, save_dir, max_len=1, split='train'):
     if split != 'test':
         annlist += [make_mirror(td, axis=1), make_mirror(td, axis=2)]
         h, w = I.shape[:2]
-        junction = td['junction']
         crop_list = []
 
         if h > w:
             x0, x1 = 0, w
-
             y0, y1 = 0, w
             crop_list += [(x0, y0, x1, y1, 'top')]
 
@@ -319,8 +296,7 @@ def save_ann(H, d, save_dir, max_len=1, split='train'):
             crop_list += [(x0, y0, x1, y1, 'center')]
 
         annlist += [
-            make_crop(td, (x0, y0, x1, y1), suffix)
-            for x0, y0, x1, y1, suffix in crop_list
+            make_crop(td, (x0, y0, x1, y1), suffix) for x0, y0, x1, y1, suffix in crop_list
         ]
 
     outputs = [resize_and_transform(H, t) for t in annlist]
@@ -331,19 +307,15 @@ def save_ann(H, d, save_dir, max_len=1, split='train'):
         if split != 'test' and num_junc <= 5:
             continue
         imgname = fn['imgname']
-        dir_to_save = join(save_dir, "{}_{}_{}".format(image_h, grid_h,
-                                                       num_bin))
+        dir_to_save = join(save_dir, "{}_{}_{}".format(image_h, grid_h, num_bin))
         if not isdir(dir_to_save):
             os.mkdir(dir_to_save)
-        with open('{}/{}.pickle'.format(dir_to_save, imgname[:-4]),
-                  'wb') as handle:
+        with open('{}/{}.pickle'.format(dir_to_save, imgname[:-4]), 'wb') as handle:
             pickle.dump(fn, handle, protocol=pickle.HIGHEST_PROTOCOL)
         cv2.imwrite(join(dir_to_save, fn['imgname']), fn['image'])
 
 
 # load the pickle files.
-
-
 def loading(fn, src_dir):
     with open(src_dir / fn, 'rb') as handle:
         d = pickle.load(handle, encoding='latin1')
@@ -355,17 +327,14 @@ def loading(fn, src_dir):
 debug = False
 
 
-def load_data_and_save(H, src_dir, save_dir, filenames, split='train',
-                       use_mp=True):
+def load_data_and_save(H, src_dir, save_dir, filenames, split='train', use_mp=True):
     print("src_dir: {} save_dir: {}".format(src_dir, save_dir))
 
-    bar = pb.ProgressBar(widgets=['[ ',
-                                  pb.Bar(), ' ][ ',
-                                  pb.Timer(), ' ]'], max_value=pb.UnknownLength)
+    bar = pb.ProgressBar(widgets=['[ ', pb.Bar(), ' ][ ', pb.Timer(), ' ]'],
+                         max_value=pb.UnknownLength)
 
     def loadDataset():
-        return Parallel(n_jobs=1)(
-            delayed(loading)(f, src_dir) for f in bar(filenames))
+        return Parallel(n_jobs=1)(delayed(loading)(f, src_dir) for f in bar(filenames))
 
     if not debug:
         print("== loading raw data ==")
@@ -376,14 +345,11 @@ def load_data_and_save(H, src_dir, save_dir, filenames, split='train',
         cpu_num = multiprocessing.cpu_count()
         cpu_num = min(30, cpu_num)
 
-        bar = pb.ProgressBar(widgets=['[ ',
-                                      pb.Bar(), ' ][ ',
-                                      pb.Timer(), ' ]'],
-                             max_value=pb.UnknownLength)
+        bar = pb.ProgressBar(widgets=['[ ', pb.Bar(), ' ][ ',
+                                      pb.Timer(), ' ]'], max_value=pb.UnknownLength)
         if use_mp:
-            Parallel(n_jobs=cpu_num)(
-                delayed(save_ann)(H, d, save_dir, split=split)
-                for d in bar(anno))  # max_len default to 1.
+            Parallel(n_jobs=cpu_num)(delayed(save_ann)(H, d, save_dir, split=split)
+                                     for d in bar(anno))  # max_len default to 1.
         else:
             print("== single process processing")
             for d in anno:  # max_len default to 1.
@@ -397,12 +363,10 @@ def load_data_and_save(H, src_dir, save_dir, filenames, split='train',
 
     train_name = prefix + "_train.txt"
     val_name = prefix + "_val.txt"
-    test_name = prefix + "_test.txt"
     dirname = prefix
 
     def valid_pickle_file(x):
-        return x.endswith('.jpg') and isfile("{}/{}.pickle".format(
-            dirname, x[:-4]))
+        return x.endswith('.jpg') and isfile("{}/{}.pickle".format(dirname, x[:-4]))
 
     imgnames = [x for x in os.listdir(dirname) if valid_pickle_file(x)]
     train, val, test = [], [], []
@@ -424,8 +388,7 @@ def load_data_and_save(H, src_dir, save_dir, filenames, split='train',
 
     trainImgs = trainImgs[200:]
     valImgs = trainImgs[:200]
-    print("train: {} | val: {} | test: {}".format(
-        len(trainImgs), len(valImgs), len(testImgs)))
+    print("train: {} | val: {} | test: {}".format(len(trainImgs), len(valImgs), len(testImgs)))
 
     for f in imgnames:
         if '_' in f:
@@ -443,8 +406,7 @@ def load_data_and_save(H, src_dir, save_dir, filenames, split='train',
             if prefix_ in testImgs:
                 test += [f]
 
-    print("train: {} | val: {} | test: {}".format(
-        len(train), len(val), len(test)))
+    print("train: {} | val: {} | test: {}".format(len(train), len(val), len(test)))
     write_list_to_file(train_name, train)
     write_list_to_file(val_name, val)
 
@@ -459,6 +421,5 @@ def create_dataset(H, split, use_mp=True):
     filelst = [x[:-4] + '.pkl' for x in filelst]
     print(" #{split} images: {0}".format(len(filelst), split=split))
     start = time.time()
-    load_data_and_save(H, src_dir=src_dir, save_dir=save_dir, filenames=filelst,
-                       use_mp=use_mp)
+    load_data_and_save(H, src_dir=src_dir, save_dir=save_dir, filenames=filelst, use_mp=use_mp)
     print(" Elasped time: {:.2f}".format(time.time() - start))

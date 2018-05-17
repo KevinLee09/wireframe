@@ -3,7 +3,9 @@ output/
 linepx/models/*.log
 linepx/models/*.tar
 linepx/models/?
-linepx/models/?_test
+linepx/models/??
+linepx/models/???
+linepx/models/*_test
 
 test_data
 src/test_data

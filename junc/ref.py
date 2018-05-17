@@ -14,7 +14,6 @@ nThreads = 4
 pixel_mean = np.array([115.9839754, 126.63120922, 137.73309306], dtype=np.float32)
 
 ext = '.pickle'
-#ext = '.pk'
 
 root_dir = Path(os.getcwd()) / '..'
 data_root = root_dir / 'data'
