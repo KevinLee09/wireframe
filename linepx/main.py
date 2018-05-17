@@ -1,19 +1,18 @@
-import sys
-import opts
-import math
 import importlib
-from preprocess import *
-import _init_paths
+import math
+import sys
+
 import torch
+
+import _init_paths
+import opts
+from preprocess import *
 
 
 def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = '0'
-    #cudnn.benchmark = True
-
     opt = opts.parse()
     print(("device id: {}".format(torch.cuda.current_device())))
-
 
     models = importlib.import_module('models.init')
     criterions = importlib.import_module('criterions.init')
@@ -21,10 +20,9 @@ def main():
     Trainer = importlib.import_module('models.' + opt.netType + '-train')
 
     if opt.genLine:
-        if opt.testOnly:
-            processData('test')
-        else:
-            processData('train')
+        processData('train')
+        processData('test')
+        sys.exit(0)
 
     try:
         DataLoader = importlib.import_module('models.' + opt.netType + '-dataloader')
@@ -50,11 +48,12 @@ def main():
 
     if opt.testOnly:
         loss = trainer.test(valLoader, 0)
+        print("loss =", loss)
         sys.exit()
 
     bestLoss = math.inf
     startEpoch = max([1, opt.epochNum])
-    if checkpoint != None:
+    if checkpoint is not None:
         startEpoch = checkpoint['epoch'] + 1
         bestLoss = checkpoint['loss']
         print('Previous loss: \033[1;36m%1.4f\033[0m' % bestLoss)
@@ -64,7 +63,7 @@ def main():
     for epoch in range(startEpoch, opt.nEpochs + 1):
         trainer.scheduler.step()
 
-        trainLoss = trainer.train(trainLoader, epoch)
+        trainer.train(trainLoader, epoch)
         testLoss = trainer.test(valLoader, epoch)
 
         bestModel = False
@@ -73,7 +72,8 @@ def main():
             bestLoss = testLoss
             print(' * Best model: \033[1;36m%1.4f\033[0m * ' % testLoss)
 
-        checkpoints.save(epoch, trainer.model, criterion, trainer.optimizer, bestModel, testLoss ,opt)
+        checkpoints.save(epoch, trainer.model, criterion, trainer.optimizer, bestModel, testLoss,
+                         opt)
 
     print(' * Finished Err: \033[1;36m%1.4f\033[0m * ' % bestLoss)
 

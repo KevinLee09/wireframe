@@ -1,13 +1,17 @@
 import os
-import cv2
+import pickle
+
 import numpy as np
 import scipy.io as sio
-import pickle
-import ref
 from tqdm import tqdm
 
+import cv2
+import ref
+
+
 def intx(x):
-    return(int(x[0]), int(x[1]))
+    return (int(x[0]), int(x[1]))
+
 
 def processData(split):
     # Where to load raw images
@@ -37,18 +41,18 @@ def processData(split):
             lines_original = []
             for i, j in lines:
                 imgSize = np.array((w, h))
-                start = np.array( points[i] ) * inpSize / imgSize
-                end = np.array( points[j] ) * inpSize / imgSize
+                start = np.array(points[i]) * inpSize / imgSize
+                end = np.array(points[j]) * inpSize / imgSize
                 lines_original.append(points[i] + points[j])
                 dist = np.linalg.norm(end - start) / (inpSize * np.sqrt(2))
                 line = cv2.line(line, intx(start), intx(end), 255 * dist, 2)
             lines_original = np.array(lines_original)
 
         save_imgname = outPath / "{}{}".format(in_[:-4], '_rgb.png')
-        lineName = outPath / "{}{}".format(in_[:-4],'_line.png')
-        lineOrigName = outPath / "{}{}".format(in_[:-4],'_line.mat')
+        lineName = outPath / "{}{}".format(in_[:-4], '_line.png')
+        lineOrigName = outPath / "{}{}".format(in_[:-4], '_line.mat')
         outImg = cv2.resize(img, (inpSize, inpSize))
 
-        sio.savemat(lineOrigName, {'lines':lines_original})
+        sio.savemat(lineOrigName, {'lines': lines_original})
         cv2.imwrite(str(save_imgname), outImg)
         cv2.imwrite(str(lineName), line)

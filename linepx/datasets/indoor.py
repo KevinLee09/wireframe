@@ -1,10 +1,13 @@
-from torch.utils.data.dataset import *
-import torch
 import os
+import pickle
+
 import numpy as np
+import torch
+from torch.utils.data.dataset import Dataset
+
 import cv2
 import datasets.transforms as t
-import pickle
+
 
 class indoorDist(Dataset):
     def __init__(self, imageInfo, opt, split):
@@ -42,7 +45,7 @@ class indoorDist(Dataset):
     def preprocess(self, im):
         mean = torch.Tensor([0.485, 0.456, 0.406])
         std = torch.Tensor([0.229, 0.224, 0.225])
-        im = np.asarray(im)
+        im = np.asarray(im, dtype=np.float32)
         im = t.normalize(im, mean, std)
         im = np.transpose(im, (2, 0, 1))
         return im
@@ -61,13 +64,16 @@ class indoorDist(Dataset):
             im = np.transpose(im, (1, 2, 0))
             im = t.unNormalize(im, mean, std)
             return im
+
         return process
 
     def postprocessLine(self):
         def process(im):
             im = np.transpose(im, (1, 2, 0))
             return im
+
         return process
+
 
 def getInstance(info, opt, split):
     myInstance = indoorDist(info, opt, split)

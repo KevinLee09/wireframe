@@ -1,26 +1,23 @@
-import os
-import cv2
-
-import time
 import datetime
-from tqdm import tqdm
+import os
+import pickle
+import time
+from pathlib import Path
 
 import numpy as np
 import scipy.io as sio
-
 import torch
-from torch.autograd import Variable
-import torch.optim as optim
 import torch.nn.functional as F
+import torch.optim as optim
+from progress.bar import Bar
+from torch.autograd import Variable
+from tqdm import tqdm
 
+import cv2
+import ref
+from model.networks.generate_cell_anchors import (generate_anchors, generate_bin_anchors)
 from utils.plotter import Plotter
 from utils.utils import AverageMeter
-from progress.bar import Bar
-from model.networks.generate_cell_anchors import generate_anchors, generate_bin_anchors
-from pathlib import Path
-
-import pickle
-import ref
 
 eps_div = 1e-7
 
@@ -36,13 +33,13 @@ class Trainer():
         self.optimState = optimState
         self.opt = opt
         H = opt.hype
-        
+
         self.optimizer = optimizer
         self.criterion = criterion
 
         if self.optimState is not None:
             self.optimizer.load_state_dict(self.optimState)
-            
+
         self.num_bin = self.opt.hype['num_bin']
         self.grid_h = self.grid_w = self.opt.hype['grid_size']
         self.batch_size = opt.batch_size
@@ -75,12 +72,12 @@ class Trainer():
             self.step(epoch, train_loader)
             torch.save(self.model, self.saveDir / 'model_{}.pth'.format(epoch))
             if val_loader is not None:
-               self.step(epoch, val_loader, is_val=True, split='val')
+                self.step(epoch, val_loader, is_val=True, split='val')
 
     def test(self, dataLoader, epoch, model_path):
         self.model = torch.load(model_path)
         self.model.eval()
-            
+
         test_res_dir = ref.result_dir / self.opt.exp / str(epoch)
         self.test_dir = test_res_dir
         if not self.test_dir.is_dir():
@@ -88,34 +85,31 @@ class Trainer():
 
         epoch_num_iter = len(dataLoader)
         bar = Bar('==>', max=epoch_num_iter * len(self.test_junc_thresh_list))
-        
+
         start = time.time()
         for i, input_data in enumerate(dataLoader):
             inp, imgname, size_info = input_data
 
             input_var = torch.autograd.Variable(inp).float().cuda()
-            junc_conf_var = None # torch.autograd.Variable(junc_conf).long().cuda()
-            junc_res_var = None # torch.autograd.Variable(junc_res).float().cuda()
-            bin_conf_var = None # torch.autograd.Variable(bin_conf).long().cuda()
-            bin_res_var = None # torch.autograd.Variable(bin_res).float().cuda()
+            junc_conf_var = None  # torch.autograd.Variable(junc_conf).long().cuda()
+            junc_res_var = None  # torch.autograd.Variable(junc_res).float().cuda()
+            bin_conf_var = None  # torch.autograd.Variable(bin_conf).long().cuda()
+            bin_res_var = None  # torch.autograd.Variable(bin_res).float().cuda()
 
-            (junction_logits,
-                junction_loc,
-                bin_logits,
-                bin_residual
-             ) = self.model(input_var, junc_conf_var, junc_res_var, bin_conf_var, bin_res_var)
+            (junction_logits, junction_loc, bin_logits, bin_residual) = self.model(
+                input_var, junc_conf_var, junc_res_var, bin_conf_var, bin_res_var)
 
             if self.plot_ is not None:
                 junc_conf_result, junc_res_result, bin_conf_result, bin_res_result = self.conf_loc(
-                        junction_logits, junction_loc, bin_logits, bin_residual)
+                    junction_logits, junction_loc, bin_logits, bin_residual)
 
                 num_inp = inp.size(0)
-                split='test'
+                split = 'test'
 
                 for junc_thresh in self.test_junc_thresh_list:
                     bar.suffix = '{split} epoch: [{0}][{1}/{2}]| threshold: {3}'.format(
                         epoch, i, epoch_num_iter, junc_thresh, split=split)
-                    
+
                     test_thresh_dir = self.test_dir / str(int(10 * junc_thresh))
                     if not os.path.isdir(test_thresh_dir):
                         os.mkdir(test_thresh_dir)
@@ -125,18 +119,15 @@ class Trainer():
                         ## theta_thresh = 0.5
                         tmp2 = {}
                         tmp2['h'], tmp2['w'] = size_info[idx_inside]
-                        (image, tmp2['junctions'], tmp2['thetas'], tmp2['theta_confs']) = self.plot_.plot_junction_simple(
-                            inp[idx_inside].numpy(),
-                            [junc_conf_result.data.cpu()[idx_inside].numpy(),
-                             junc_res_result.data.cpu()[idx_inside].numpy(),
-                             bin_conf_result.data.cpu()[idx_inside].numpy(),
-                             bin_res_result.data.cpu()[idx_inside].numpy()
-                             ],
-                            junc_thresh=junc_thresh, 
-                            theta_thresh=0.5, 
-                            size_info = size_info[idx_inside],
-                            keep_conf=True
-                        )
+                        (image, tmp2['junctions'], tmp2['thetas'],
+                         tmp2['theta_confs']) = self.plot_.plot_junction_simple(
+                             inp[idx_inside].numpy(), [
+                                 junc_conf_result.data.cpu()[idx_inside].numpy(),
+                                 junc_res_result.data.cpu()[idx_inside].numpy(),
+                                 bin_conf_result.data.cpu()[idx_inside].numpy(),
+                                 bin_res_result.data.cpu()[idx_inside].numpy()
+                             ], junc_thresh=junc_thresh, theta_thresh=0.5,
+                             size_info=size_info[idx_inside], keep_conf=True)
 
                         imwrite("{}/{}_5.png".format(test_thresh_dir, filename), image)
                         sio.savemat("{}/{}.mat".format(test_thresh_dir, filename), tmp2)
@@ -146,18 +137,21 @@ class Trainer():
         bar.finish()
         return 0
 
-
-    def step(self, epoch, dataLoader, is_training=True, is_val=False, is_testing=False, split='train'):
+    def step(self, epoch, dataLoader, is_training=True, is_val=False, is_testing=False,
+             split='train'):
         if is_training:
             self.model.train()
         else:
             self.model.eval()
 
         iter_per_epoch = len(dataLoader)
-        bar = Bar('==>', max=iter_per_epoch * len(self.test_junc_thresh_list) if is_testing else iter_per_epoch)
-        
-        Loss, LossJuncConf, LossJuncRes, LossBinConf, LossBinRes = AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter(), AverageMeter()
-        
+        bar = Bar(
+            '==>', max=iter_per_epoch * len(self.test_junc_thresh_list)
+            if is_testing else iter_per_epoch)
+
+        Loss, LossJuncConf, LossJuncRes, LossBinConf, LossBinRes = AverageMeter(), AverageMeter(
+        ), AverageMeter(), AverageMeter(), AverageMeter()
+
         start = time.time()
         for i, input_data in enumerate(dataLoader):
             inp, junc_conf, junc_res, bin_conf, bin_res, imgname, size_info = input_data
@@ -169,54 +163,36 @@ class Trainer():
             bin_res_var = torch.autograd.Variable(bin_res).float().cuda()
             # mask_var = torch.autograd.Variable(mask).float().cuda()
 
-            (junction_logits,
-               junction_loc,
-               bin_logits,
-               bin_residual
-            ) = self.model(input_var, junc_conf, junc_res, bin_conf, bin_res)
+            (junction_logits, junction_loc, bin_logits, bin_residual) = self.model(
+                input_var, junc_conf, junc_res, bin_conf, bin_res)
 
-            (loss,
-                junc_conf_loss,
-                junc_res_loss,
-                bin_conf_loss,
-                bin_res_loss
-             ) = self.criterion(junction_logits, junction_loc, bin_logits, bin_residual, junc_conf_var, junc_res_var, bin_conf_var, bin_res_var)
+            (loss, junc_conf_loss, junc_res_loss, bin_conf_loss, bin_res_loss) = self.criterion(
+                junction_logits, junction_loc, bin_logits, bin_residual, junc_conf_var,
+                junc_res_var, bin_conf_var, bin_res_var)
 
             if not is_val:
                 self.optimizer.zero_grad()
                 loss.backward()
                 #torch.nn.utils.clip_grad_norm(self.model.parameters(), 1.0)
                 self.optimizer.step()
-            Loss.update(
-                loss.data[0],
-                inp.size(0)
-            )
-            LossJuncConf.update(
-                junc_conf_loss.data[0],
-                inp.size(0)
-            )
-            LossBinConf.update(
-                bin_conf_loss.data[0],
-                inp.size(0)
-            )
-            LossJuncRes.update(
-                junc_res_loss.data[0],
-                inp.size(0)
-            )
-            LossBinRes.update(
-                bin_res_loss.data[0],
-                inp.size(0)
-            )
+            Loss.update(loss.data[0], inp.size(0))
+            LossJuncConf.update(junc_conf_loss.data[0], inp.size(0))
+            LossBinConf.update(bin_conf_loss.data[0], inp.size(0))
+            LossJuncRes.update(junc_res_loss.data[0], inp.size(0))
+            LossBinRes.update(bin_res_loss.data[0], inp.size(0))
 
             split = 'val' if is_val else 'train'
-            elapsed  = time.time() - start
-            remaining_seconds = elapsed * (iter_per_epoch - i) / (i+1)
+            elapsed = time.time() - start
+            remaining_seconds = elapsed * (iter_per_epoch - i) / (i + 1)
             mins, secs = divmod(remaining_seconds, 60)
             hr, mins = divmod(mins, 60)
             rsecs = "{:02d}:{:02d}:{:02d}".format(int(hr), int(mins), int(secs))
 
-            logStr = '{split} epoch: [{0}][{1}/{2}]| LR: {3:.6f}| Speed: {4:.2f}/s| Remaining: {5} | Loss {Loss.avg:.6f}|  JuncConf {JC.avg:.6f}| JuncRes {JR.avg:.6f}| BinConf {BC.avg:.6f}| BinRes {BR.avg:.6f}'.format(epoch, i, iter_per_epoch, self.lr_scheduler.get_lr()[0], float(i+1.)/elapsed, rsecs, split=split, Loss=Loss, JC=LossJuncConf, JR=LossJuncRes, BC=LossBinConf, BR=LossBinRes)
-
+            logStr = '{split} epoch: [{0}][{1}/{2}]| LR: {3:.6f}| Speed: {4:.2f}/s| Remaining: {5} | Loss {Loss.avg:.6f}|  JuncConf {JC.avg:.6f}| JuncRes {JR.avg:.6f}| BinConf {BC.avg:.6f}| BinRes {BR.avg:.6f}'.format(
+                epoch, i, iter_per_epoch,
+                self.lr_scheduler.get_lr()[0],
+                float(i + 1.) / elapsed, rsecs, split=split, Loss=Loss, JC=LossJuncConf,
+                JR=LossJuncRes, BC=LossBinConf, BR=LossBinRes)
 
             bar.suffix = logStr
             if i == iter_per_epoch - 1:
@@ -228,7 +204,7 @@ class Trainer():
             #     junc_conf_result, junc_res_result, bin_conf_result, bin_res_result = self.conf_loc(
             #             junction_logits, junction_loc, bin_logits, bin_residual)
 
-            #     if is_training and i % self.log_interval == 0:                    
+            #     if is_training and i % self.log_interval == 0:
             #         filename = imgname[0]
             #         for junc_thresh in self.train_junc_thresh_list:
             #             (
@@ -239,11 +215,11 @@ class Trainer():
             #                  junc_res_result.data.cpu()[0].numpy(),
             #                  bin_conf_result.data.cpu()[0].numpy(),
             #                  bin_res_result.data.cpu()[0].numpy()],
-            #                 junc_thresh=junc_thresh, 
-            #                 theta_thresh=0.5, 
+            #                 junc_thresh=junc_thresh,
+            #                 theta_thresh=0.5,
             #                 size_info=size_info[0]
             #             )
-            #             imwrite( valres_dir / "{}_{}_{}_{}.png".format(epoch, int(i / self.log_interval), filename[:-4], int(junc_thresh * 10)), 
+            #             imwrite( valres_dir / "{}_{}_{}_{}.png".format(epoch, int(i / self.log_interval), filename[:-4], int(junc_thresh * 10)),
             #                         image)
 
         bar.finish()

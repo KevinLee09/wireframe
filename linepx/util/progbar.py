@@ -1,6 +1,8 @@
 import sys
 import time
+
 import numpy as np
+
 
 class progbar(object):
     """Displays a progress bar.
@@ -34,8 +36,7 @@ class progbar(object):
         values = values or []
         for k, v in values:
             if k not in self.sum_values:
-                self.sum_values[k] = [v * (current - self.seen_so_far),
-                                      current - self.seen_so_far]
+                self.sum_values[k] = [v * (current - self.seen_so_far), current - self.seen_so_far]
                 self.unique_values.append(k)
             else:
                 self.sum_values[k][0] += v * (current - self.seen_so_far)
