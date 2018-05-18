@@ -30,7 +30,6 @@ def check_dir(dir_name):
 
 
 def imwrite(imgname, img):
-    # in case imgname is a Path obj.
     cv2.imwrite(str(imgname), img)
 
 
@@ -74,7 +73,7 @@ class Wireframe():
         self.line_dir = result_dir / 'linepx' / '1'
         self.wireframe_dir = result_dir / 'wireframe_{}_{}/{}'.format(
             self.junc_thresh, self.theta_thresh, self.line_threshold)
-        #check_dir(self.wireframe_dir)
+        # check_dir(self.wireframe_dir)
 
         self.line_map_size = 320
         self.img_dir = img_dir
@@ -150,10 +149,8 @@ class Wireframe():
             This func operates for a single image.
         """
         # theta_thresh = self.theta_thresh
-        thetas = self.pred_thetas  # [thresholding(ths, ths_confs, theta_thresh)[0] for ths, ths_confs in zip(self.pred_thetas, self.pred_confs)]
-
+        thetas = self.pred_thetas
         junctions, nthetas = mergeDupJunctions(self.pred_junctions, thetas)
-        #nthetas = mergeDupTheta(nthetas)
 
         img = self.img
         h, w = self.h, self.w
@@ -179,10 +176,10 @@ class Wireframe():
                 junction_map_ray[idx].append(len(ray_all) - 1)
         ray_all = np.array(ray_all, dtype=np.float32)
 
-        ## calculate several metrics:
-        ##      1. the projection of junction on ray.
-        ##      2. the distance of junction to ray.
-        ##      3. the angle of angle with respect to the ends of ray.
+        # calculate several metrics:
+        # 1. the projection of junction on ray.
+        # 2. the distance of junction to ray.
+        # 3. the angle of angle with respect to the ends of ray.
 
         pointJuncOnRay, distJuncToRay, juncOnRay, juncRayTheta = calc_dist_theta(
             junctions, ray_all)
@@ -203,8 +200,8 @@ class Wireframe():
                 dist = distJuncToRay[j, i, 0]
                 dist_to_junction = distJuncToRay[j, i, 3]
 
-                if delta_t < self.theta_dist_thresh or (dist <= self.theta_dist_relax and
-                                                        dist_to_junction < self.dist_to_junction):
+                if (delta_t < self.theta_dist_thresh or dist <= self.theta_dist_relax
+                        and dist_to_junction < self.dist_to_junction):
                     T[i, j] = delta_t
                     if on_line:
                         within_T[i, j] = delta_t
@@ -222,7 +219,6 @@ class Wireframe():
                 if idx == mapped_point_idx:
                     continue
                 subset_indexes = junction_map_ray[idx]
-                #np.nonzero(lines_map_matrix == idx)[0]
 
                 for si in subset_indexes:
                     if within_T[si, mapped_point_idx] > -1:
@@ -231,7 +227,7 @@ class Wireframe():
                     elif T[si, mapped_point_idx] > -1:
                         back_T[i, idx] = si
 
-        ### line split 1
+        # line split 1
         mutual_T = mutual_T.astype(np.int32)
 
         im = img
@@ -276,7 +272,6 @@ class Wireframe():
                 if length_ < self.max_side_length / 2.0:
                     adding_line = True
                 else:
-                    #coords = linespace((x1, y1), (x2, y2), img.shape[:2])
                     ratio, max_loc, _ = pixelRatio((x1, y1), (x2, y2), self.lineMap)
                     if ratio > 0.6:
                         adding_line = True
@@ -287,9 +282,9 @@ class Wireframe():
                                   color=(0, 255, 0), thickness=2)
                     split_1.append((ray_all[ni, 2], ray_all[ni, 3], ray_all[i, 2], ray_all[i, 3]))
 
-        ### line split 2
-        ### origin t22_4
-        ## for all the cuts, only take the first
+        # line split 2
+        # origin t22_4
+        # for all the cuts, only take the first
         split_2 = []
         for i in range(numRay):
             bi_point_indexes = np.nonzero(mutual_T[i, :] > -1)[0]
@@ -326,7 +321,6 @@ class Wireframe():
                 end_list.append((bx, by))
 
                 next_start = None
-                previous_end = None
 
                 first_flag = True
                 for idx, (start, end) in enumerate(zip(start_list, end_list)):
@@ -346,7 +340,6 @@ class Wireframe():
                         adding_line = True
 
                     if adding_line:
-                        previous_end = end
                         split_2.append((start[0], start[1], end[0], end[1]))
                         im = addLines(im, [(start[0], start[1], end[0], end[1])],
                                       display_=self.display, imgname="{} split 2".format(
@@ -357,7 +350,6 @@ class Wireframe():
                         if idx == 0:
                             first_flag = False
                         next_start = None
-                        previous_end = None
 
             elif len(bi_point_indexes) == 0 and len(online_point_indexes) > 0:
                 online_point_indexes = online_point_indexes.tolist()
@@ -377,7 +369,6 @@ class Wireframe():
                 end_list.append((bx, by))
 
                 next_start = None
-                previous_end = None
                 for idx, (start, end) in enumerate(zip(start_list, end_list)):
                     if next_start is None:
                         next_start = start
@@ -394,7 +385,6 @@ class Wireframe():
                         adding_line = True
 
                     if adding_line:
-                        previous_end = end
                         split_2.append((start[0], start[1], end[0], end[1]))
                         im = addLines(im, [(start[0], start[1], end[0], end[1])],
                                       display_=self.display, imgname='{} split 2'.format(
@@ -402,7 +392,6 @@ class Wireframe():
                                                                                   80), thickness=2)
                     else:
                         next_start = None
-                        previous_end = None
         if len(split_1) == 0:
             print('{} no line from junction'.format(self.imgname))
 
@@ -538,7 +527,6 @@ def mergeDupJunctions(junctions, thetas):
 def mergeDupTheta(thetas, theta_thresh=4.):
     new_thetas = [[] for _ in thetas]
     for idx, ths in enumerate(thetas):
-        num = len(ths)
         new_ths = []
         ths.sort()
         for i, t in enumerate(ths):
@@ -706,7 +694,6 @@ def deltaTheta(ep, sp, pt):
 def pointDistMatrix(pts1, pts2):
     v = pts1[:, np.newaxis, :] - pts2[np.newaxis, :, :]
     dist = np.linalg.norm(v, axis=2)
-
     return dist
 
 
@@ -727,11 +714,9 @@ def intersections(line, lines_all):
     nodup = []
     for i, it_ in enumerate(intersects):
         dup_flag = False
-        dup_idx = None
         for j, nd_ in enumerate(nodup):
             if distance(it_, nd_) < 3.:
                 dup_flag = True
-                dup_idx = j
                 break
         if not dup_flag:
             nodup.append(it_)
@@ -742,7 +727,7 @@ def intersections(line, lines_all):
 def pixelRatio(p1, p2, M):
     coords = linespace(p1, p2, M.shape)
     map_value = M[coords]
-    #print("\n map_value: ", map_value, "\n"
+    # print("\n map_value: ", map_value, "\n"
 
     ratio, max_idx_loc, max_idx = ratioSeq(map_value)
     max_idx = int(max_idx)
@@ -806,7 +791,6 @@ def angleBetweenLines(l1, l2):
 
 
 def angleBetweenLinesMatrix(L1, L2):
-    M, N = L1.shape[0], L2.shape[0]
     x = L1[:, :2] - L1[:, 2:4]
     y = L2[:, :2] - L2[:, 2:4]
     x = x[:, np.newaxis, :]
@@ -850,9 +834,9 @@ def main():
         check_dir(wireframe_dir)
         print("== line threshold: {}".format(line_thresh))
         if use_mp:
-            Parallel(n_jobs=njobs)(delayed(process_wireframe)(exp_name, in_, junc_thresh,
-                                                              line_thresh)
-                                   for in_ in tqdm(imgnames))  # max_len default to 1.
+            Parallel(n_jobs=njobs)(
+                delayed(process_wireframe)(exp_name, in_, junc_thresh, line_thresh)
+                for in_ in tqdm(imgnames))
         else:
             for in_ in tqdm(imgnames):
                 process_wireframe(in_, junc_thresh, line_thresh, debug=debug)

@@ -158,8 +158,8 @@ def showIm(name='test', img=None):
     if img is None:
         return
     else:
-        #print "show img"
-        #cv2.resizeWindow(name, 1000, 1000)
+        # print "show img"
+        # cv2.resizeWindow(name, 1000, 1000)
         if img.max() > 10:
             img = img.astype(np.uint8)
         cv2.imshow(name, img)
